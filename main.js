@@ -17295,6 +17295,9 @@ class Compiler {
 
 
   loadVersion(usingWorker, url) {
+    if(url.substr(0,4)=="http"){
+      usingWorker = true;
+    }
     console.log('Loading ' + url + ' ' + (usingWorker ? 'with worker' : 'without worker'));
     this.event.trigger('loadingCompiler', [url, usingWorker]);
 
@@ -27970,7 +27973,7 @@ const CompilerContainer = props => {
     allversions: [],
     customVersions: [],
     selectedVersion: null,
-    defaultVersion: 'soljson-v0.8.4+commit.c7e474f2.js',
+    defaultVersion: 'soljson-v0.4.24.js',
     // this default version is defined: in makeMockCompiler (for browser test)
     selectedLanguage: '',
     runs: '',
@@ -28080,56 +28083,20 @@ const CompilerContainer = props => {
   }, [configurationSettings]); // fetching both normal and wasm builds and creating a [version, baseUrl] map
 
   const fetchAllVersion = async callback => {
-    let selectedVersion, allVersionsWasm, isURL;
+    let selectedVersion;
     let allVersions = [{
       path: 'builtin',
-      longVersion: 'latest local version - 0.7.4'
+      longVersion: 'earliest version - 0.4.24'
+    },{
+      path: 'soljson-v0.8.4.js',
+      longVersion: 'v0.8.4'
+    },{
+      path: 'soljson-v0.8.7.js',
+      longVersion: 'v0.8.7'
     }]; // fetch normal builds
 
-    const binRes = await (0, _remixSolidity.promisedMiniXhr)(`${_remixSolidity.baseURLBin}/list.json`); // fetch wasm builds
-
-    const wasmRes = await (0, _remixSolidity.promisedMiniXhr)(`${_remixSolidity.baseURLWasm}/list.json`);
-
-    if (binRes.event.type === 'error' && wasmRes.event.type === 'error') {
-      selectedVersion = 'builtin';
-      return callback(allVersions, selectedVersion);
-    }
-
-    try {
-      const versions = JSON.parse(binRes.json).builds.slice().reverse();
-      allVersions = [...allVersions, ...versions];
-      selectedVersion = state.defaultVersion;
-      if (queryParams.get().version) selectedVersion = queryParams.get().version; // Check if version is a URL and corresponding filename starts with 'soljson'
-
-      if (selectedVersion.startsWith('https://')) {
-        const urlArr = selectedVersion.split('/');
-        if (urlArr[urlArr.length - 1].startsWith('soljson')) isURL = true;
-      }
-
-      if (wasmRes.event.type !== 'error') {
-        allVersionsWasm = JSON.parse(wasmRes.json).builds.slice().reverse();
-      }
-    } catch (e) {
-      tooltip('Cannot load compiler version list. It might have been blocked by an advertisement blocker. Please try deactivating any of them from this page and reload. Error: ' + e);
-    } // replace in allVersions those compiler builds which exist in allVersionsWasm with new once
-
-
-    if (allVersionsWasm && allVersions) {
-      allVersions.forEach((compiler, index) => {
-        const wasmIndex = allVersionsWasm.findIndex(wasmCompiler => {
-          return wasmCompiler.longVersion === compiler.longVersion;
-        });
-
-        if (wasmIndex !== -1) {
-          allVersions[index] = allVersionsWasm[wasmIndex];
-          _remixSolidity.pathToURL[compiler.path] = _remixSolidity.baseURLWasm;
-        } else {
-          _remixSolidity.pathToURL[compiler.path] = _remixSolidity.baseURLBin;
-        }
-      });
-    }
-
-    callback(allVersions, selectedVersion, isURL);
+    selectedVersion = 'builtin';
+    return callback(allVersions, selectedVersion);
   };
   /**
    * Update the compilation button with the name of the current file
@@ -28322,11 +28289,13 @@ const CompilerContainer = props => {
       if (!location.endsWith('/')) location += '/';
       url = location + 'soljson.js';
     } else {
-      if (selectedVersion.indexOf('soljson') !== 0 || helper.checkSpecialChars(selectedVersion)) {
-        return console.log('loading ' + selectedVersion + ' not allowed');
-      }
-
-      url = `${(0, _remixSolidity.urlFromVersion)(selectedVersion)}`;
+      let location = window.document.location;
+      let path = location.pathname;
+      if (!path.startsWith('/')) path = '/' + path;
+      location = `${location.protocol}//${location.host}${path}assets/js`;
+      if (location.endsWith('index.html')) location = location.substring(0, location.length - 10);
+      if (!location.endsWith('/')) location += '/';
+      url = location + selectedVersion;
     } // Workers cannot load js on "file:"-URLs and we get a
     // "Uncaught RangeError: Maximum call stack size exceeded" error on Chromium,
     // resort to non-worker version in that case.
